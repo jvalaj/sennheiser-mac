@@ -126,10 +126,52 @@ struct CCOptionRow: View {
     }
 }
 
+struct CCBatteryBadge: View {
+    var level: Int?
+    var isCharging: Bool = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if let level {
+                Text("\(level)%")
+                    .font(.system(size: 10.5, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            Image(systemName: symbolName)
+                .font(.system(size: level == nil ? 13 : 14, weight: .regular))
+                .foregroundStyle(isCharging ? Color.yellow.opacity(0.95) : .secondary)
+                .symbolRenderingMode(isCharging ? .multicolor : .monochrome)
+        }
+    }
+
+    private var symbolName: String {
+        if level == nil {
+            return isCharging ? "bolt.fill" : "battery.100percent"
+        }
+        let tier = batteryTier(for: level ?? 0)
+        if isCharging {
+            return "battery.\(tier).bolt"
+        }
+        return "battery.\(tier)"
+    }
+
+    private func batteryTier(for level: Int) -> String {
+        switch level {
+        case 0...10: return "0percent"
+        case 11...35: return "25percent"
+        case 36...60: return "50percent"
+        case 61...85: return "75percent"
+        default: return "100percent"
+        }
+    }
+}
+
 struct CCDeviceRow: View {
     let name: String
     let subtitle: String
     var battery: Int? = nil
+    var isCharging: Bool = false
     var connection: DeviceConnectionStyle = .disconnected
 
     enum DeviceConnectionStyle {
@@ -159,14 +201,8 @@ struct CCDeviceRow: View {
 
             Spacer(minLength: 8)
 
-            if let battery {
-                HStack(spacing: 4) {
-                    Text("\(battery)%")
-                        .font(.system(size: 11).monospacedDigit())
-                    Image(systemName: batterySymbol(for: battery))
-                        .font(.system(size: 14, weight: .light))
-                }
-                .foregroundStyle(.secondary)
+            if battery != nil || isCharging {
+                CCBatteryBadge(level: battery, isCharging: isCharging)
             }
         }
     }
@@ -184,16 +220,6 @@ struct CCDeviceRow: View {
         case .bluetooth: return .white
         case .wired: return .primary
         case .disconnected: return .secondary
-        }
-    }
-
-    private func batterySymbol(for level: Int) -> String {
-        switch level {
-        case 0...10: return "battery.0percent"
-        case 11...35: return "battery.25percent"
-        case 36...60: return "battery.50percent"
-        case 61...85: return "battery.75percent"
-        default: return "battery.100percent"
         }
     }
 }

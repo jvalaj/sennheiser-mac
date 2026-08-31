@@ -39,6 +39,12 @@ struct MenuContentView: View {
                     .font(CCFont.section)
                     .foregroundStyle(.primary)
                 Spacer(minLength: 8)
+                if client.showsBatteryStatus {
+                    CCBatteryBadge(
+                        level: client.battery,
+                        isCharging: client.effectiveBatteryIsCharging
+                    )
+                }
                 CCConnectionControl(client: client)
             }
 
@@ -66,7 +72,8 @@ struct MenuContentView: View {
             CCDeviceRow(
                 name: client.deviceName.isEmpty ? "Accentum" : client.deviceName,
                 subtitle: statusLine,
-                battery: client.isConnected ? client.battery : nil,
+                battery: client.battery,
+                isCharging: client.effectiveBatteryIsCharging,
                 connection: deviceConnectionStyle
             )
         }
@@ -157,7 +164,7 @@ struct MenuContentView: View {
         case .connected:
             return client.noise.active == .unknown ? "Bluetooth · controls available" : client.noise.active.rawValue
         case .wired:
-            return "USB-C · audio only"
+            return "USB-C"
         case .disconnecting:
             return "Disconnecting…"
         case .connecting:
@@ -166,7 +173,7 @@ struct MenuContentView: View {
             return client.lastError.isEmpty ? "Connection failed" : client.lastError
         case .idle:
             if client.isWiredUSBActive, !client.isBluetoothLinked {
-                return "USB-C · audio only"
+                return "USB-C"
             }
             return client.isBluetoothLinked ? "Connecting…" : "Not connected"
         }

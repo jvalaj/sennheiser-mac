@@ -13,6 +13,7 @@ final class SennheiserClient: NSObject, ObservableObject {
     private(set) var modelId: String = ""
     private(set) var firmware: String = ""
     private(set) var battery: Int?
+    private(set) var batteryIsCharging = false
     private(set) var codec: String = "—"
     private(set) var noise = NoiseControlState()
     private(set) var lastError: String = ""
@@ -43,6 +44,15 @@ final class SennheiserClient: NSObject, ObservableObject {
 
     var isConnectingBluetooth: Bool {
         connectionPhase == .connecting
+    }
+
+    var showsBatteryStatus: Bool {
+        isConnected || isWiredUSBActive || connectionPhase == .wired || connectionPhase == .disconnecting
+    }
+
+    var effectiveBatteryIsCharging: Bool {
+        if isWiredUSBActive { return true }
+        return batteryIsCharging
     }
 
     var onChange: (() -> Void)?
@@ -302,6 +312,7 @@ final class SennheiserClient: NSObject, ObservableObject {
 
     private func clearDeviceState() {
         battery = nil
+        batteryIsCharging = false
         modelId = ""
         firmware = ""
         codec = "—"
@@ -613,8 +624,7 @@ final class SennheiserClient: NSObject, ObservableObject {
         case SennCmd.bassBoostResp, SennCmd.bassBoostNotif:
             if let v = p.first { bassBoost = v != 0 }
         case SennCmd.batteryResp, SennCmd.batteryNotif:
-            if p.count >= 2 { battery = Int(p[1...].max() ?? p[1]) }
-            else if let v = p.first { battery = Int(v) }
+            parseBatteryPayload(p)
         case SennCmd.codecResp:
             if let v = p.first { codec = Codec.name(v) }
         case SennCmd.modelIdResp:
@@ -630,6 +640,27 @@ final class SennheiserClient: NSObject, ObservableObject {
             break
         }
         notify()
+    }
+
+    private func parseBatteryPayload(_ p: [UInt8]) {
+        guard !p.isEmpty else { return }
+
+        if p.count == 2, p[1] <= 100, p[0] <= 1 {
+            batteryIsCharging = p[0] == 1
+            battery = Int(p[1])
+            return
+        }
+
+        let levels = p.filter { $0 <= 100 }.map(Int.init)
+        if let level = levels.max() {
+            battery = level
+        } else if let v = p.first {
+            battery = Int(v)
+        }
+
+        if p.count >= 2, p[0] <= 1 {
+            batteryIsCharging = p[0] == 1
+        }
     }
 
     private func matchEqPreset() {
