@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct MenuContentView: View {
@@ -7,18 +8,13 @@ struct MenuContentView: View {
 
     var body: some View {
         ClearGlassPanel {
-            ZStack(alignment: .bottomTrailing) {
-                VStack(alignment: .leading, spacing: 0) {
-                    soundSection
-                    CCDivider()
-                    deviceSection
-                    CCDivider()
-                    noiseSection
-                }
-
-                bugReportLink
-                    .padding(.trailing, 12)
-                    .padding(.bottom, 7)
+            VStack(alignment: .leading, spacing: 0) {
+                soundSection
+                CCDivider()
+                deviceSection
+                CCDivider()
+                noiseSection
+                bugReportRow
             }
         }
         .onAppear {
@@ -76,7 +72,7 @@ struct MenuContentView: View {
     // MARK: - Noise Control
 
     private var noiseSection: some View {
-        CCSection(spacing: 6, topPadding: 6, bottomPadding: UI.lastRowBottomInset) {
+        CCSection(spacing: 6, topPadding: 6, bottomPadding: 4) {
             CCSectionHeader(title: "Noise Control")
             VStack(spacing: 0) {
                 noiseRow(.transparency, title: "Transparency", symbol: "ear", isLast: false)
@@ -111,16 +107,26 @@ struct MenuContentView: View {
         }
     }
 
-    private var bugReportLink: some View {
-        Link("bug", destination: Support.bugReportURL(
-            deviceName: client.deviceName,
-            firmware: client.firmware,
-            model: client.profile.displayName,
-            connected: client.isConnected
-        ))
-        .font(.system(size: 8.5, weight: .regular))
-        .foregroundStyle(.tertiary)
-        .opacity(0.55)
+    private var bugReportRow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            Button("Report a bug") {
+                NSWorkspace.shared.open(Support.bugReportURL(
+                    deviceName: client.deviceName,
+                    firmware: client.firmware,
+                    model: client.profile.displayName,
+                    connected: client.isConnected
+                ))
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 9.5))
+            .foregroundStyle(.secondary)
+            .opacity(0.75)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .padding(.horizontal, UI.sectionHPadding)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Helpers
