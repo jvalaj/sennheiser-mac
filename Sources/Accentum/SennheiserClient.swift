@@ -33,7 +33,16 @@ final class SennheiserClient: NSObject, ObservableObject {
 
     /// USB-C audio without GAIA — show the wired prompt instead of disabled controls.
     var showsWiredBluetoothPrompt: Bool {
-        isWiredUSBActive && !isConnected
+        isWiredUSBActive && !showsNoiseControlOptions && connectionPhase != .disconnecting
+    }
+
+    /// Noise rows visible while connecting or connected (avoids wired prompt flash during BT switch).
+    var showsNoiseControlOptions: Bool {
+        isConnected || connectionPhase == .connecting
+    }
+
+    var isConnectingBluetooth: Bool {
+        connectionPhase == .connecting
     }
 
     var onChange: (() -> Void)?
@@ -137,6 +146,9 @@ final class SennheiserClient: NSObject, ObservableObject {
     /// User tapped Connect / Connect Bluetooth — may open a BT session even when USB audio is active.
     func connectBluetooth() {
         userRequestedBluetooth = true
+        connectionPhase = .connecting
+        lastError = ""
+        notify()
         connectBluetoothNow()
     }
 
@@ -160,6 +172,26 @@ final class SennheiserClient: NSObject, ObservableObject {
             return
         }
         if let first = Self.candidateDevices().first {
+            if !first.isConnected() {
+                connectionPhase = .connecting
+                deviceName = first.name ?? first.addressString ?? "Sennheiser"
+                lastError = ""
+                notify()
+                ioQueue.async { [weak self] in
+                    let result = first.openConnection()
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        guard self.userRequestedBluetooth else { return }
+                        if result == kIOReturnSuccess || first.isConnected() {
+                            self.connect(to: first)
+                        } else {
+                            self.connectionPhase = .failed
+                            self.fail("Couldn't connect Bluetooth. Check System Settings → Bluetooth.")
+                        }
+                    }
+                }
+                return
+            }
             connect(to: first)
             return
         }
@@ -387,21 +419,37 @@ final class SennheiserClient: NSObject, ObservableObject {
         send(vendor: vendor, command, payload)
     }
 
-    private func refreshAll() {
-        send(SennCmd.registerNotification, [SennCmd.featureBattery])
+    private func refreshEssentials() {
         send(SennCmd.registerNotification, [SennCmd.featureANC])
+        send(SennCmd.registerNotification, [SennCmd.featureBattery])
+        send(SennCmd.ancOnGet)
+        send(SennCmd.transparencyOnGet)
+        send(SennCmd.batteryGet)
+        send(SennCmd.codecGet)
+    }
+
+    private func refreshSecondary() {
         send(SennCmd.registerNotification, [SennCmd.featureUserEQ])
         send(SennCmd.modelIdGet)
         send(SennCmd.fwVersionGet)
-        send(SennCmd.batteryGet)
-        send(SennCmd.codecGet)
-        send(SennCmd.ancOnGet)
-        send(SennCmd.transparencyOnGet)
         send(SennCmd.transparencyGet)
         send(SennCmd.transparencyHearingModeGet)
         send(SennCmd.eqConfigGet)
         for b in UInt8(0)..<5 { send(SennCmd.eqBandGet, [b]) }
         send(SennCmd.bassBoostGet)
+    }
+
+    private func refreshAll() {
+        refreshEssentials()
+        refreshSecondary()
+    }
+
+    private func refreshAllStaggered() {
+        refreshEssentials()
+        let delay: TimeInterval = 0.04
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.refreshSecondary()
+        }
     }
 
     func setNoiseMode(_ mode: NoiseControlState.Mode) {
@@ -631,8 +679,8 @@ extension SennheiserClient: IOBluetoothRFCOMMChannelDelegate {
         if error == kIOReturnSuccess {
             connectionSucceeded()
             notify()
-            refreshAll()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            refreshAllStaggered()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 self?.applyTransparencyMusicPreferenceIfNeeded()
             }
         } else {

@@ -142,21 +142,9 @@ struct CCDeviceRow: View {
                 Circle()
                     .fill(iconBackground)
                     .frame(width: 26, height: 26)
-                Group {
-                    switch connection {
-                    case .wired:
-                        CCConnectionRouteIcon(route: .wired, size: 15)
-                            .foregroundStyle(iconForeground)
-                    case .bluetooth:
-                        Image(systemName: "headphones")
-                            .font(.system(size: 12, weight: .light))
-                            .foregroundStyle(iconForeground)
-                    case .disconnected:
-                        Image(systemName: "headphones")
-                            .font(.system(size: 12, weight: .light))
-                            .foregroundStyle(iconForeground)
-                    }
-                }
+                Image(systemName: "headphones")
+                    .font(.system(size: 12, weight: .light))
+                    .foregroundStyle(iconForeground)
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -242,8 +230,10 @@ struct CCWiredBluetoothPrompt: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            CCConnectionRouteIcon(route: .bluetooth, size: 16)
+            Image(systemName: "bluetooth")
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.tertiary)
+                .frame(width: 16)
 
             Text("Noise control needs Bluetooth. Switch to Bluetooth above, or use the button on your headphones.")
                 .font(CCFont.caption)
@@ -259,15 +249,17 @@ struct CCConnectionControl: View {
     @ObservedObject var client: SennheiserClient
 
     private var wiredSelected: Bool {
-        (client.isWiredUSBActive && !client.isConnected) || client.isDisconnectingBluetooth
+        if client.isDisconnectingBluetooth { return true }
+        if client.isConnectingBluetooth { return false }
+        return client.isWiredUSBActive && !client.isConnected
     }
 
     private var bluetoothSelected: Bool {
-        client.isConnected
+        client.isConnected || client.isConnectingBluetooth
     }
 
     private var bluetoothConnecting: Bool {
-        client.connectionPhase == .connecting
+        client.isConnectingBluetooth
     }
 
     private var wiredDisconnecting: Bool {
@@ -292,7 +284,8 @@ struct CCConnectionControl: View {
                 title: "Bluetooth",
                 isSelected: bluetoothSelected,
                 isUnavailable: (wiredSelected && !bluetoothConnecting) || wiredDisconnecting,
-                isInteractive: !bluetoothSelected && !bluetoothConnecting && !wiredDisconnecting
+                isInteractive: !bluetoothSelected && !bluetoothConnecting && !wiredDisconnecting,
+                isLoading: bluetoothConnecting && !client.isConnected
             ) {
                 client.connectBluetooth()
             }
@@ -302,6 +295,9 @@ struct CCConnectionControl: View {
             Capsule(style: .continuous)
                 .fill(Color.primary.opacity(0.07))
         }
+        .animation(.easeInOut(duration: 0.2), value: wiredSelected)
+        .animation(.easeInOut(duration: 0.2), value: bluetoothSelected)
+        .animation(.easeInOut(duration: 0.2), value: wiredDisconnecting)
     }
 
     @ViewBuilder
@@ -339,6 +335,7 @@ struct CCConnectionControl: View {
                     }
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: isSelected)
 
         if isInteractive, let action {
             Button(action: action) {

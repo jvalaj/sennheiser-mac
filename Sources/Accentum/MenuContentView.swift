@@ -76,18 +76,26 @@ struct MenuContentView: View {
 
     private var noiseSection: some View {
         CCSection(spacing: 6, topPadding: 6, bottomPadding: 4) {
-            CCSectionHeader(title: "Noise Control")
-            if client.showsWiredBluetoothPrompt {
-                CCWiredBluetoothPrompt(client: client)
-            } else {
-                VStack(spacing: 0) {
-                    noiseRow(.transparency, title: "Transparency", symbol: "ear", isLast: false)
-                    noiseRow(.anc, title: "Noise Cancellation", symbol: "wave.3.right", isLast: false)
-                    noiseRow(.off, title: "Off", symbol: "speaker", isLast: true)
+            CCSectionHeader(
+                title: "Noise Control",
+                trailing: client.isConnectingBluetooth ? "Connecting…" : nil
+            )
+            ZStack(alignment: .topLeading) {
+                if client.showsWiredBluetoothPrompt {
+                    CCWiredBluetoothPrompt(client: client)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+                } else {
+                    VStack(spacing: 0) {
+                        noiseRow(.transparency, title: "Transparency", symbol: "ear", isLast: false)
+                        noiseRow(.anc, title: "Noise Cancellation", symbol: "wave.3.right", isLast: false)
+                        noiseRow(.off, title: "Off", symbol: "speaker", isLast: true)
+                    }
+                    .opacity(client.isConnected ? 1 : 0.5)
+                    .allowsHitTesting(client.isConnected)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
                 }
-                .opacity(client.isConnected ? 1 : 0.45)
-                .allowsHitTesting(client.isConnected)
             }
+            .animation(.easeInOut(duration: 0.22), value: client.showsWiredBluetoothPrompt)
         }
     }
 
@@ -139,7 +147,7 @@ struct MenuContentView: View {
     // MARK: - Helpers
 
     private var deviceConnectionStyle: CCDeviceRow.DeviceConnectionStyle {
-        if client.isConnected { return .bluetooth }
+        if client.isConnected || client.isConnectingBluetooth { return .bluetooth }
         if client.isWiredUSBActive { return .wired }
         return .disconnected
     }
