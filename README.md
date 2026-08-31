@@ -1,4 +1,4 @@
-# Accentum
+# sennheiser-mac
 
 Menu bar app for Sennheiser Accentum headphones on macOS.
 
