@@ -6,6 +6,18 @@ Control noise cancellation, transparency, volume, and battery from your menu bar
 
 ---
 
+## Download latest build
+
+No Xcode or build tools needed:
+
+1. Go to **[releases/latest/](releases/latest/)**
+2. Download **`Accentum.app.zip`**
+3. Unzip → drag **Accentum.app** to **Applications** → open it
+
+Pair your headphones in **System Settings → Bluetooth** first. Allow **Bluetooth** when macOS asks.
+
+---
+
 ## Install with an AI agent
 
 Paste this into Cursor, Claude Code, Codex, or any coding agent with terminal access:
@@ -46,7 +58,8 @@ Pair your headphones in **System Settings → Bluetooth** first. Allow **Bluetoo
 - Noise control — Transparency, Noise Cancellation, Off
 - Volume slider
 - Battery and codec info
-- Auto-connect when your headphones pair
+- Auto-connect when your headphones pair (Bluetooth)
+- USB-C detection — won’t force Bluetooth when you’re on cable; optional connect for controls
 
 Tested on **Accentum Wireless**. May work on other recent Sennheiser models (Momentum, Accentum Plus, etc.) — open an issue if yours does not.
 

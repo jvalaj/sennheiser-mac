@@ -130,17 +130,33 @@ struct CCDeviceRow: View {
     let name: String
     let subtitle: String
     var battery: Int? = nil
-    var connected: Bool = false
+    var connection: DeviceConnectionStyle = .disconnected
+
+    enum DeviceConnectionStyle {
+        case disconnected, wired, bluetooth
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             ZStack {
                 Circle()
-                    .fill(connected ? Color.accentColor : Color.primary.opacity(0.12))
+                    .fill(iconBackground)
                     .frame(width: 26, height: 26)
-                Image(systemName: "headphones")
-                    .font(.system(size: 12, weight: .light))
-                    .foregroundStyle(connected ? .white : .secondary)
+                Group {
+                    switch connection {
+                    case .wired:
+                        CCConnectionRouteIcon(route: .wired, size: 15)
+                            .foregroundStyle(iconForeground)
+                    case .bluetooth:
+                        Image(systemName: "headphones")
+                            .font(.system(size: 12, weight: .light))
+                            .foregroundStyle(iconForeground)
+                    case .disconnected:
+                        Image(systemName: "headphones")
+                            .font(.system(size: 12, weight: .light))
+                            .foregroundStyle(iconForeground)
+                    }
+                }
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -164,6 +180,22 @@ struct CCDeviceRow: View {
                 }
                 .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    private var iconBackground: Color {
+        switch connection {
+        case .bluetooth: return Color.accentColor
+        case .wired: return Color.primary.opacity(0.14)
+        case .disconnected: return Color.primary.opacity(0.12)
+        }
+    }
+
+    private var iconForeground: Color {
+        switch connection {
+        case .bluetooth: return .white
+        case .wired: return .primary
+        case .disconnected: return .secondary
         }
     }
 
@@ -205,73 +237,131 @@ struct CCVolumeRow: View {
     }
 }
 
+struct CCWiredBluetoothPrompt: View {
+    @ObservedObject var client: SennheiserClient
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            CCConnectionRouteIcon(route: .bluetooth, size: 16)
+                .foregroundStyle(.tertiary)
+
+            Text("Noise control needs Bluetooth. Switch to Bluetooth above, or use the button on your headphones.")
+                .font(CCFont.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+    }
+}
+
 struct CCConnectionControl: View {
     @ObservedObject var client: SennheiserClient
 
-    private enum DisplayState {
-        case connected, connecting, connect
+    private var wiredSelected: Bool {
+        (client.isWiredUSBActive && !client.isConnected) || client.isDisconnectingBluetooth
     }
 
-    private var displayState: DisplayState {
-        if client.isConnected { return .connected }
-        if client.connectionPhase == .connecting { return .connecting }
-        if client.isBluetoothLinked { return .connecting }
-        return .connect
+    private var bluetoothSelected: Bool {
+        client.isConnected
+    }
+
+    private var bluetoothConnecting: Bool {
+        client.connectionPhase == .connecting
+    }
+
+    private var wiredDisconnecting: Bool {
+        client.isDisconnectingBluetooth
     }
 
     var body: some View {
-        switch displayState {
-        case .connected:
-            Text("Connected")
-                .font(.system(size: 10.5, weight: .medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.primary.opacity(0.06))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5)
-                        }
-                }
+        HStack(spacing: 2) {
+            routeSegment(
+                route: .wired,
+                title: "Wired",
+                isSelected: wiredSelected,
+                isUnavailable: !client.isWiredUSBActive,
+                isInteractive: client.canSwitchToWired,
+                isLoading: wiredDisconnecting
+            ) {
+                client.preferWired()
+            }
 
-        case .connecting:
-            HStack(spacing: 5) {
+            routeSegment(
+                route: .bluetooth,
+                title: "Bluetooth",
+                isSelected: bluetoothSelected,
+                isUnavailable: (wiredSelected && !bluetoothConnecting) || wiredDisconnecting,
+                isInteractive: !bluetoothSelected && !bluetoothConnecting && !wiredDisconnecting
+            ) {
+                client.connectBluetooth()
+            }
+        }
+        .padding(2)
+        .background {
+            Capsule(style: .continuous)
+                .fill(Color.primary.opacity(0.07))
+        }
+    }
+
+    @ViewBuilder
+    private func routeSegment(
+        route: ConnectionRoute,
+        title: String,
+        isSelected: Bool,
+        isUnavailable: Bool,
+        isInteractive: Bool,
+        isLoading: Bool = false,
+        action: (() -> Void)? = nil
+    ) -> some View {
+        let content = HStack(spacing: 4) {
+            if isLoading {
                 ProgressView()
                     .controlSize(.small)
-                    .scaleEffect(0.65)
-                Text("Connecting…")
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .scaleEffect(0.55)
+                    .frame(width: 13, height: 13)
+            } else {
+                CCConnectionRouteIcon(route: route, size: 13)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.primary.opacity(0.04))
+            Text(title)
+                .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
+        }
+        .foregroundStyle(foregroundStyle(selected: isSelected, unavailable: isUnavailable))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background {
+            if isSelected {
+                Capsule(style: .continuous)
+                    .fill(Color.primary.opacity(0.14))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                        Capsule(style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5)
                     }
             }
+        }
 
-        case .connect:
-            Button {
-                client.connectFirstAvailable()
-            } label: {
-                Text("Connect")
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.black.opacity(0.82))
-                    }
+        if isInteractive, let action {
+            Button(action: action) {
+                content
             }
             .buttonStyle(.plain)
+            .opacity(isUnavailable ? 0.38 : 1)
+        } else {
+            content
+                .opacity(segmentOpacity(selected: isSelected, unavailable: isUnavailable))
         }
+    }
+
+    private func segmentOpacity(selected: Bool, unavailable: Bool) -> Double {
+        if unavailable { return 0.38 }
+        if selected { return 1 }
+        return 0.72
+    }
+
+    private func foregroundStyle(selected: Bool, unavailable: Bool) -> Color {
+        if unavailable { return .secondary }
+        if selected { return .primary }
+        return .secondary
     }
 }
 

@@ -3,6 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 CONFIG="${1:-release}"
+ACTION="${2:-}"
 APP="Accentum.app"
 BIN_NAME="Accentum"
 
@@ -48,3 +49,15 @@ fi
 
 echo "✓ Built $(pwd)/$APP"
 echo "  Run: open $APP"
+echo "  Or:  ./build_app.sh $CONFIG relaunch"
+
+if [ "$ACTION" = "relaunch" ]; then
+  echo "▸ relaunching Accentum…"
+  pkill -x "$BIN_NAME" 2>/dev/null || true
+  # Avoid Launch Services error -600 (open racing pkill).
+  for _ in {1..20}; do
+    pgrep -x "$BIN_NAME" >/dev/null || break
+    sleep 0.1
+  done
+  open "$(pwd)/$APP"
+fi

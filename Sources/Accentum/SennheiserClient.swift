@@ -4,7 +4,7 @@ import Combine
 
 final class SennheiserClient: NSObject, ObservableObject {
     enum ConnectionPhase: Equatable {
-        case idle, connecting, connected, failed
+        case idle, connecting, disconnecting, connected, wired, failed
     }
 
     private(set) var deviceName: String = ""
@@ -25,6 +25,17 @@ final class SennheiserClient: NSObject, ObservableObject {
     /// `true` = music keeps playing in transparency; `false` = automatic pause (factory default).
     private(set) var transparencyKeepsMusic: Bool?
 
+    private(set) var wiredAudioDeviceName: String?
+    /// User opted in to Bluetooth while headphones are on USB audio.
+    private var userRequestedBluetooth = false
+
+    var isWiredUSBActive: Bool { wiredAudioDeviceName != nil }
+
+    /// USB-C audio without GAIA — show the wired prompt instead of disabled controls.
+    var showsWiredBluetoothPrompt: Bool {
+        isWiredUSBActive && !isConnected
+    }
+
     var onChange: (() -> Void)?
 
     private var device: IOBluetoothDevice?
@@ -35,6 +46,7 @@ final class SennheiserClient: NSObject, ObservableObject {
     private var connectGeneration = 0
     private let ioQueue = DispatchQueue(label: "accentum.gaia.io", qos: .userInitiated)
     private var modeStepWork: DispatchWorkItem?
+    private let bluetoothDisconnector = BluetoothDisconnector()
 
     private static let nameHints = ["ACCENTUM", "MOMENTUM", "SENNHEISER", "CX", "HD "]
     private static let accentumGaiaChannel: BluetoothRFCOMMChannelID = 15
@@ -49,6 +61,10 @@ final class SennheiserClient: NSObject, ObservableObject {
 
     static func connectedAccentum() -> IOBluetoothDevice? {
         candidateDevices().first { $0.isConnected() }
+    }
+
+    static func connectedAccentumDevices() -> [IOBluetoothDevice] {
+        candidateDevices().filter { $0.isConnected() }
     }
 
     func connect(to dev: IOBluetoothDevice) {
@@ -72,8 +88,73 @@ final class SennheiserClient: NSObject, ObservableObject {
         dev.performSDPQuery(self)
     }
 
+    /// User chose USB-C — close GAIA and disconnect Bluetooth.
+    func preferWired() {
+        userRequestedBluetooth = false
+        cancelTimers()
+        connectGeneration += 1
+
+        channel?.close()
+        channel = nil
+        isConnected = false
+        rxBuffer.removeAll()
+        device = nil
+
+        let btDevices = Self.connectedAccentumDevices()
+        guard !btDevices.isEmpty else {
+            applyWiredPreference()
+            return
+        }
+
+        connectionPhase = .disconnecting
+        lastError = ""
+        notify()
+
+        bluetoothDisconnector.disconnectAll(btDevices) { [weak self] in
+            self?.applyWiredPreference()
+        }
+    }
+
+    private func applyWiredPreference() {
+        if isWiredUSBActive {
+            enterWiredMode()
+        } else {
+            connectionPhase = .idle
+            lastError = ""
+            notify()
+        }
+    }
+
+    var isDisconnectingBluetooth: Bool {
+        connectionPhase == .disconnecting
+    }
+
+    var canSwitchToWired: Bool {
+        guard isWiredUSBActive, connectionPhase != .disconnecting else { return false }
+        return isBluetoothLinked || isConnected || connectionPhase == .connecting
+    }
+
+    /// User tapped Connect / Connect Bluetooth — may open a BT session even when USB audio is active.
+    func connectBluetooth() {
+        userRequestedBluetooth = true
+        connectBluetoothNow()
+    }
+
+    /// Automatic GAIA hookup (launch, BT reconnect). Skipped while on USB-C unless the user opted in.
+    func autoConnectBluetoothIfNeeded() {
+        guard shouldAcceptBluetoothAutoConnect() else { return }
+        guard let connected = Self.connectedAccentum() else { return }
+        connect(to: connected)
+    }
+
     func connectFirstAvailable() {
+        connectBluetooth()
+    }
+
+    private func connectBluetoothNow() {
         cancelRetryTimer()
+        reconcileStaleGAIA()
+
         if let connected = Self.connectedAccentum() {
             connect(to: connected)
             return
@@ -82,18 +163,83 @@ final class SennheiserClient: NSObject, ObservableObject {
             connect(to: first)
             return
         }
+        if isWiredUSBActive {
+            enterWiredMode()
+            return
+        }
         connectionPhase = .failed
         fail("No paired Accentum found. Pair in System Settings → Bluetooth.")
         scheduleRetry()
     }
 
-    /// Connect when headphones are already paired/linked but GAIA is not up yet.
-    func ensureConnected() {
+    /// Refresh state when the menu opens — never forces Bluetooth while on USB audio.
+    func refreshOnMenuOpen() {
+        reconcileStaleGAIA()
         guard !isConnected else { return }
         if connectionPhase == .connecting { return }
-        if Self.connectedAccentum() != nil || !Self.candidateDevices().isEmpty {
-            connectFirstAvailable()
+        if prefersWiredOnly {
+            enterWiredMode()
+            return
         }
+        autoConnectBluetoothIfNeeded()
+    }
+
+    func syncWiredAudio(deviceName name: String?) {
+        let wasWired = isWiredUSBActive
+        wiredAudioDeviceName = name
+
+        if prefersWiredOnly {
+            if connectionPhase == .connecting {
+                connectGeneration += 1
+            }
+            enterWiredMode()
+            return
+        }
+
+        if wasWired, connectionPhase == .wired, !isWiredUSBActive, !isConnected {
+            connectionPhase = .idle
+            notify()
+        }
+    }
+
+    func shouldAcceptBluetoothAutoConnect() -> Bool {
+        connectionPhase != .disconnecting && (!isWiredUSBActive || userRequestedBluetooth)
+    }
+
+    private var prefersWiredOnly: Bool {
+        isWiredUSBActive && !userRequestedBluetooth
+    }
+
+    private func reconcileStaleGAIA() {
+        guard isConnected, !isBluetoothLinked else { return }
+        channel?.close()
+        channel = nil
+        isConnected = false
+        if isWiredUSBActive {
+            enterWiredMode()
+        } else {
+            connectionPhase = .idle
+            notify()
+        }
+    }
+
+    private func enterWiredMode() {
+        cancelTimers()
+        channel?.close()
+        channel = nil
+        isConnected = false
+        userRequestedBluetooth = false
+        connectionPhase = .wired
+        lastError = ""
+        if deviceName.isEmpty {
+            deviceName = wiredAudioDeviceName ?? "Accentum"
+        }
+        codec = "USB"
+        notify()
+    }
+
+    private func shouldAttemptBluetoothReconnect() -> Bool {
+        userRequestedBluetooth || !isWiredUSBActive
     }
 
     var isBluetoothLinked: Bool {
@@ -107,7 +253,17 @@ final class SennheiserClient: NSObject, ObservableObject {
         channel = nil
         device = nil
         isConnected = false
-        connectionPhase = .idle
+        if connectionPhase == .disconnecting {
+            // preferWired() owns the transition — let it finish.
+            rxBuffer.removeAll()
+            notify()
+            return
+        }
+        if isWiredUSBActive {
+            enterWiredMode()
+        } else {
+            connectionPhase = .idle
+        }
         rxBuffer.removeAll()
         notify()
     }
@@ -150,11 +306,12 @@ final class SennheiserClient: NSObject, ObservableObject {
     }
 
     private func scheduleRetry() {
+        guard shouldAttemptBluetoothReconnect() else { return }
         guard retryTimer == nil else { return }
         retryTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
             self?.retryTimer = nil
             guard let self, !self.isConnected else { return }
-            self.connectFirstAvailable()
+            self.autoConnectBluetoothIfNeeded()
         }
     }
 
@@ -497,9 +654,13 @@ extension SennheiserClient: IOBluetoothRFCOMMChannelDelegate {
 
     func rfcommChannelClosed(_ rfcommChannel: IOBluetoothRFCOMMChannel!) {
         isConnected = false
-        connectionPhase = .idle
         channel = nil
-        notify()
-        scheduleRetry()
+        if isWiredUSBActive, !isBluetoothLinked {
+            enterWiredMode()
+        } else {
+            connectionPhase = .idle
+            notify()
+            scheduleRetry()
+        }
     }
 }

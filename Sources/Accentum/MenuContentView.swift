@@ -20,7 +20,10 @@ struct MenuContentView: View {
         .onAppear {
             syncLocalMode()
             media.refreshVolume()
-            client.ensureConnected()
+            client.refreshOnMenuOpen()
+        }
+        .onChange(of: client.isWiredUSBActive) { _, _ in
+            client.refreshOnMenuOpen()
         }
         .onChange(of: client.noise.active) { _, mode in
             if mode != .unknown { localMode = mode }
@@ -64,7 +67,7 @@ struct MenuContentView: View {
                 name: client.deviceName.isEmpty ? "Accentum" : client.deviceName,
                 subtitle: statusLine,
                 battery: client.isConnected ? client.battery : nil,
-                connected: client.isConnected
+                connection: deviceConnectionStyle
             )
         }
     }
@@ -74,14 +77,18 @@ struct MenuContentView: View {
     private var noiseSection: some View {
         CCSection(spacing: 6, topPadding: 6, bottomPadding: 4) {
             CCSectionHeader(title: "Noise Control")
-            VStack(spacing: 0) {
-                noiseRow(.transparency, title: "Transparency", symbol: "ear", isLast: false)
-                noiseRow(.anc, title: "Noise Cancellation", symbol: "wave.3.right", isLast: false)
-                noiseRow(.off, title: "Off", symbol: "speaker", isLast: true)
+            if client.showsWiredBluetoothPrompt {
+                CCWiredBluetoothPrompt(client: client)
+            } else {
+                VStack(spacing: 0) {
+                    noiseRow(.transparency, title: "Transparency", symbol: "ear", isLast: false)
+                    noiseRow(.anc, title: "Noise Cancellation", symbol: "wave.3.right", isLast: false)
+                    noiseRow(.off, title: "Off", symbol: "speaker", isLast: true)
+                }
+                .opacity(client.isConnected ? 1 : 0.45)
+                .allowsHitTesting(client.isConnected)
             }
         }
-        .opacity(client.isConnected ? 1 : 0.45)
-        .allowsHitTesting(client.isConnected)
     }
 
     private func noiseRow(_ mode: NoiseControlState.Mode, title: String, symbol: String, isLast: Bool) -> some View {
@@ -131,15 +138,28 @@ struct MenuContentView: View {
 
     // MARK: - Helpers
 
+    private var deviceConnectionStyle: CCDeviceRow.DeviceConnectionStyle {
+        if client.isConnected { return .bluetooth }
+        if client.isWiredUSBActive { return .wired }
+        return .disconnected
+    }
+
     private var statusLine: String {
         switch client.connectionPhase {
         case .connected:
-            return client.noise.active == .unknown ? "Connected" : client.noise.active.rawValue
+            return client.noise.active == .unknown ? "Bluetooth · controls available" : client.noise.active.rawValue
+        case .wired:
+            return "USB-C · audio only"
+        case .disconnecting:
+            return "Disconnecting…"
         case .connecting:
-            return "Connecting…"
+            return "Connecting Bluetooth…"
         case .failed:
             return client.lastError.isEmpty ? "Connection failed" : client.lastError
         case .idle:
+            if client.isWiredUSBActive, !client.isBluetoothLinked {
+                return "USB-C · audio only"
+            }
             return client.isBluetoothLinked ? "Connecting…" : "Not connected"
         }
     }
