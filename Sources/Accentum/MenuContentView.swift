@@ -7,12 +7,18 @@ struct MenuContentView: View {
 
     var body: some View {
         ClearGlassPanel {
-            VStack(alignment: .leading, spacing: 0) {
-                soundSection
-                CCDivider()
-                deviceSection
-                CCDivider()
-                noiseSection
+            ZStack(alignment: .bottomTrailing) {
+                VStack(alignment: .leading, spacing: 0) {
+                    soundSection
+                    CCDivider()
+                    deviceSection
+                    CCDivider()
+                    noiseSection
+                }
+
+                bugReportLink
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 7)
             }
         }
         .onAppear {
@@ -73,19 +79,19 @@ struct MenuContentView: View {
         CCSection(spacing: 6, topPadding: 6, bottomPadding: UI.lastRowBottomInset) {
             CCSectionHeader(title: "Noise Control")
             VStack(spacing: 0) {
-                noiseRow(.transparency, title: "Transparency", icon: .transparency, isLast: false)
-                noiseRow(.anc, title: "Noise Cancellation", icon: .anc, isLast: false)
-                noiseRow(.off, title: "Off", icon: .off, isLast: true)
+                noiseRow(.transparency, title: "Transparency", symbol: "ear", isLast: false)
+                noiseRow(.anc, title: "Noise Cancellation", symbol: "wave.3.right", isLast: false)
+                noiseRow(.off, title: "Off", symbol: "speaker", isLast: true)
             }
         }
         .opacity(client.isConnected ? 1 : 0.45)
         .allowsHitTesting(client.isConnected)
     }
 
-    private func noiseRow(_ mode: NoiseControlState.Mode, title: String, icon: NoiseMode, isLast: Bool) -> some View {
+    private func noiseRow(_ mode: NoiseControlState.Mode, title: String, symbol: String, isLast: Bool) -> some View {
         CCOptionRow(
             title: title,
-            icon: .noise(icon),
+            symbol: symbol,
             selected: localMode == mode,
             enabled: client.isConnected,
             verticalPadding: 6,
@@ -103,6 +109,18 @@ struct MenuContentView: View {
             localMode = mode
             client.setNoiseMode(mode)
         }
+    }
+
+    private var bugReportLink: some View {
+        Link("bug", destination: Support.bugReportURL(
+            deviceName: client.deviceName,
+            firmware: client.firmware,
+            model: client.profile.displayName,
+            connected: client.isConnected
+        ))
+        .font(.system(size: 8.5, weight: .regular))
+        .foregroundStyle(.tertiary)
+        .opacity(0.55)
     }
 
     // MARK: - Helpers

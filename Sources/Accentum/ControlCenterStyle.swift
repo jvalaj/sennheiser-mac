@@ -82,26 +82,9 @@ struct CCDivider: View {
     }
 }
 
-enum CCRowIcon {
-    case system(String)
-    case noise(NoiseMode)
-
-    @ViewBuilder
-    var view: some View {
-        switch self {
-        case .system(let name):
-            Image(systemName: name)
-                .font(CCFont.icon)
-                .symbolRenderingMode(.monochrome)
-        case .noise(let mode):
-            NoiseModeIcon(mode: mode)
-        }
-    }
-}
-
 struct CCOptionRow: View {
     let title: String
-    let icon: CCRowIcon
+    let symbol: String
     let selected: Bool
     var enabled: Bool = true
     var verticalPadding: CGFloat = 3
@@ -123,7 +106,9 @@ struct CCOptionRow: View {
                         .frame(width: 12, alignment: .center)
                         .opacity(selected ? 1 : 0)
 
-                    icon.view
+                    Image(systemName: symbol)
+                        .font(CCFont.icon)
+                        .symbolRenderingMode(.monochrome)
                         .frame(width: 18, alignment: .center)
                         .foregroundStyle(.primary.opacity(enabled ? 0.8 : 0.35))
 
@@ -252,19 +237,24 @@ struct CCConnectionControl: View {
                 }
 
         case .connecting:
-            Text("Connecting…")
-                .font(.system(size: 10.5, weight: .medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.primary.opacity(0.04))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-                        }
-                }
+            HStack(spacing: 5) {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.65)
+                Text("Connecting…")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(0.04))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                    }
+            }
 
         case .connect:
             Button {
