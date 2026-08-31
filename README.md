@@ -4,23 +4,28 @@ Native macOS menu bar app for **Sennheiser Accentum** headphones — noise cance
 
 ## Install with your AI coding agent
 
-Copy this into **Cursor**, **Claude Code**, **Codex**, or any agent with terminal access on your Mac:
+<p align="center">
+  <img src="https://img.shields.io/badge/⚡_Install_with_AI-Cursor_%7C_Claude_%7C_Codex-7C3AED?style=for-the-badge&labelColor=312e81" alt="Install with AI" />
+</p>
 
-```
-Install and run the Accentum macOS menu bar app for Sennheiser headphones.
-
-1. Clone https://github.com/jvalaj/sennheiser-mac
-2. cd into the repo
-3. Run: chmod +x build_app.sh && ./build_app.sh release
-4. Copy Accentum.app to /Applications/
-5. Launch it: open /Applications/Accentum.app
-6. Tell me when macOS asks for Bluetooth permission — I need to click Allow
-7. Confirm the headphones icon appears in my menu bar
-
-Requirements: macOS with Xcode Command Line Tools (swift on PATH). Headphones must already be paired in System Settings → Bluetooth.
-```
-
-The agent should run the commands for you. On first launch, allow **Bluetooth** when macOS prompts.
+> [!TIP]
+> **Copy & paste this prompt** into Cursor, Claude Code, Codex, or any AI agent with terminal access on your Mac:
+>
+> ```text
+> Install and run the Accentum macOS menu bar app for Sennheiser headphones.
+>
+> 1. Clone https://github.com/jvalaj/sennheiser-mac
+> 2. cd into the repo
+> 3. Run: chmod +x build_app.sh && ./build_app.sh release
+> 4. Copy Accentum.app to /Applications/
+> 5. Launch it: open /Applications/Accentum.app
+> 6. Tell me when macOS asks for Bluetooth permission — I need to click Allow
+> 7. Confirm the headphones icon appears in my menu bar
+>
+> Requirements: macOS with Xcode Command Line Tools (swift on PATH). Headphones must already be paired in System Settings → Bluetooth.
+> ```
+>
+> The agent should run the commands for you. On first launch, allow **Bluetooth** when macOS prompts.
 
 ![macOS](https://img.shields.io/badge/macOS-13%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange)
