@@ -81,7 +81,7 @@ Protocol research builds on community reverse-engineering of the Smart Control a
 ## Known limitations
 
 - **Unofficial** — not affiliated with Sennheiser/Sonova
-- Switching ANC ↔ Transparency may briefly interrupt music (headphone firmware behavior)
+- Switching ANC ↔ Transparency may briefly interrupt music unless **Keep music playing** is enabled (disables the headphone's factory "Automatic Pause" setting)
 - macOS only — uses `IOBluetooth`, not portable to Windows/Linux
 - No firmware updates (out of scope)
 

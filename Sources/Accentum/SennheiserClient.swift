@@ -22,6 +22,8 @@ final class SennheiserClient: NSObject, ObservableObject {
     private(set) var eqBands: [Float] = [0, 0, 0, 0, 0]
     private(set) var eqPreset: String = "Flat"
     private(set) var bassBoost = false
+    /// `true` = music keeps playing in transparency; `false` = automatic pause (factory default).
+    private(set) var transparencyKeepsMusic: Bool?
 
     var onChange: (() -> Void)?
 
@@ -85,6 +87,19 @@ final class SennheiserClient: NSObject, ObservableObject {
         scheduleRetry()
     }
 
+    /// Connect when headphones are already paired/linked but GAIA is not up yet.
+    func ensureConnected() {
+        guard !isConnected else { return }
+        if connectionPhase == .connecting { return }
+        if Self.connectedAccentum() != nil || !Self.candidateDevices().isEmpty {
+            connectFirstAvailable()
+        }
+    }
+
+    var isBluetoothLinked: Bool {
+        Self.connectedAccentum() != nil
+    }
+
     func disconnect() {
         cancelTimers()
         connectGeneration += 1
@@ -106,6 +121,7 @@ final class SennheiserClient: NSObject, ObservableObject {
         eqBands = [0, 0, 0, 0, 0]
         eqPreset = "Flat"
         bassBoost = false
+        transparencyKeepsMusic = nil
     }
 
     private func cancelTimers() {
@@ -195,23 +211,23 @@ final class SennheiserClient: NSObject, ObservableObject {
 
     func send(vendor: UInt16 = GAIA.vendorSennheiser, _ command: UInt16, _ payload: [UInt8] = []) {
         guard isConnected else { return }
-        ioQueue.async { [weak self] in
-            guard let self, let ch = self.channel else { return }
+        let work = { [weak self] in
+            guard let self, let ch = self.channel, self.isConnected else { return }
             let data = GAIA.frame(vendor: vendor, command: command, payload: payload)
             var frame = [UInt8](data)
             frame.withUnsafeMutableBytes { raw in
                 _ = ch.writeSync(raw.baseAddress, length: UInt16(raw.count))
             }
         }
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.async(execute: work)
+        }
     }
 
     private func sendOnIO(vendor: UInt16 = GAIA.vendorSennheiser, _ command: UInt16, _ payload: [UInt8] = []) {
-        guard let ch = channel, isConnected else { return }
-        let data = GAIA.frame(vendor: vendor, command: command, payload: payload)
-        var frame = [UInt8](data)
-        frame.withUnsafeMutableBytes { raw in
-            _ = ch.writeSync(raw.baseAddress, length: UInt16(raw.count))
-        }
+        send(vendor: vendor, command, payload)
     }
 
     private func refreshAll() {
@@ -225,6 +241,7 @@ final class SennheiserClient: NSObject, ObservableObject {
         send(SennCmd.ancOnGet)
         send(SennCmd.transparencyOnGet)
         send(SennCmd.transparencyGet)
+        send(SennCmd.transparencyHearingModeGet)
         send(SennCmd.eqConfigGet)
         for b in UInt8(0)..<5 { send(SennCmd.eqBandGet, [b]) }
         send(SennCmd.bassBoostGet)
@@ -284,14 +301,11 @@ final class SennheiserClient: NSObject, ObservableObject {
         }
     }
 
-    /// Space commands apart when multiple are unavoidable (e.g. turning both modes off).
     private func sendModeSteps(_ steps: [(UInt16, [UInt8])]) {
         let gap: TimeInterval = steps.count > 1 ? 0.35 : 0
-        ioQueue.async { [weak self] in
-            guard let self else { return }
-            for (i, step) in steps.enumerated() {
-                if i > 0 { Thread.sleep(forTimeInterval: gap) }
-                self.sendOnIO(step.0, step.1)
+        for (i, step) in steps.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + gap * Double(i)) { [weak self] in
+                self?.send(step.0, step.1)
             }
         }
     }
@@ -312,39 +326,57 @@ final class SennheiserClient: NSObject, ObservableObject {
         eqPreset = name
         eqBands = gains
         notify()
-        ioQueue.async { [weak self] in
-            guard let self else { return }
-            for (i, g) in gains.enumerated() {
-                if i > 0 { Thread.sleep(forTimeInterval: 0.03) }
-                let raw = Int8(clamping: Int((g * 10).rounded()))
-                self.sendOnIO(SennCmd.eqBandSet, [UInt8(i), UInt8(bitPattern: raw)])
+        for (i, g) in gains.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.04) { [weak self] in
+                self?.sendEqBand(i, g, immediate: true)
             }
         }
     }
 
-    func setEqBand(_ index: Int, _ gain: Float) {
+    func setEqBand(_ index: Int, _ gain: Float, live: Bool = false) {
         guard eqBands.indices.contains(index) else { return }
         eqBands[index] = gain
         eqPreset = "Custom"
         notify()
-        sendEqBand(index, gain)
+        sendEqBand(index, gain, immediate: !live)
     }
 
     func setBassBoost(_ on: Bool) {
         bassBoost = on
         notify()
         send(SennCmd.bassBoostSet, [on ? 1 : 0])
+        send(SennCmd.bassBoostGet)
     }
 
     private var eqWork: [Int: DispatchWorkItem] = [:]
-    private func sendEqBand(_ index: Int, _ gainDB: Float) {
+    private func sendEqBand(_ index: Int, _ gainDB: Float, immediate: Bool = false) {
         eqWork[index]?.cancel()
         let raw = Int8(clamping: Int((gainDB * 10).rounded()))
-        let work = DispatchWorkItem { [weak self] in
-            self?.send(SennCmd.eqBandSet, [UInt8(index), UInt8(bitPattern: raw)])
+        let payload: [UInt8] = [UInt8(index), UInt8(bitPattern: raw)]
+        let fire: () -> Void = { [weak self] in
+            self?.send(SennCmd.eqBandSet, payload)
         }
+        if immediate {
+            fire()
+            return
+        }
+        let work = DispatchWorkItem(block: fire)
         eqWork[index] = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
+    }
+
+    func setTransparencyKeepsMusic(_ keepsMusic: Bool) {
+        transparencyKeepsMusic = keepsMusic
+        notify()
+        // 0x00 = keep music playing, 0x01 = automatic pause (mute music)
+        send(SennCmd.transparencyHearingModeSet, [keepsMusic ? 0 : 1])
+        send(SennCmd.transparencyHearingModeGet)
+    }
+
+    func applyTransparencyMusicPreferenceIfNeeded() {
+        if transparencyKeepsMusic != true {
+            setTransparencyKeepsMusic(true)
+        }
     }
 
     func refresh() { refreshAll() }
@@ -358,10 +390,15 @@ final class SennheiserClient: NSObject, ObservableObject {
             if let v = p.first { noise.transparencyOn = v != 0 }
         case SennCmd.transparencyResp, SennCmd.transparencyNotif:
             if let v = p.first { noise.transparencyLevel = v }
+        case SennCmd.transparencyHearingModeResp:
+            if let v = p.first { transparencyKeepsMusic = v == 0 }
         case SennCmd.eqBandResp:
             if p.count >= 2, p[0] < 5 {
                 eqBands[Int(p[0])] = Float(Int8(bitPattern: p[1])) / 10
                 matchEqPreset()
+            } else if p.count == 1 {
+                // GET band response is a single signed gain byte (dB×10).
+                // We don't track which band was requested; notifications refresh all bands.
             }
         case SennCmd.eqNotif:
             if p.count >= 5 {
@@ -438,6 +475,9 @@ extension SennheiserClient: IOBluetoothRFCOMMChannelDelegate {
             connectionSucceeded()
             notify()
             refreshAll()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.applyTransparencyMusicPreferenceIfNeeded()
+            }
         } else {
             connectionPhase = .failed
             fail("Headphones busy — close Sennheiser Smart Control on your phone.")

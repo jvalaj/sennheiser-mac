@@ -25,8 +25,8 @@ final class AppCoordinator: ObservableObject {
 
         // If headphones are already connected when the app starts, hook up immediately.
         if SennheiserClient.connectedAccentum() != nil {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-                self?.client.connectFirstAvailable()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                self?.client.ensureConnected()
             }
         }
     }

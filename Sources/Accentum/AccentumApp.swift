@@ -20,6 +20,7 @@ struct AccentumApp: App {
         MenuBarExtra("Accentum", systemImage: "headphones") {
             MenuContentView()
                 .environmentObject(coordinator.client)
+                .containerBackground(.clear, for: .window)
         }
         .menuBarExtraStyle(.window)
     }

@@ -63,6 +63,11 @@ enum SennCmd {
     static let transparencyOnResp: UInt16 = 0x1905
     static let transparencyOnNotif: UInt16 = 0x1885
 
+    /// Transparency automatic pause — 0x00 keep music playing, 0x01 mute music (factory default).
+    static let transparencyHearingModeSet: UInt16 = 0x1800
+    static let transparencyHearingModeGet: UInt16 = 0x1801
+    static let transparencyHearingModeResp: UInt16 = 0x1901
+
     static let transparencySet: UInt16 = 0x1A02
     static let transparencyGet: UInt16 = 0x1A03
     static let transparencyResp: UInt16 = 0x1B03
@@ -96,13 +101,16 @@ enum SennCmd {
 }
 
 struct NoiseControlState: Equatable {
-    enum Mode: String, CaseIterable {
-        case anc = "Noise Cancel"
+    enum Mode: String, CaseIterable, Hashable, Identifiable {
+        case anc = "Noise Cancellation"
         case transparency = "Transparency"
         case off = "Off"
         case unknown = "—"
 
-        var icon: String {
+        var id: String { rawValue }
+
+        /// SF Symbols aligned with AirPods / Beats noise-control UI.
+        var symbol: String {
             switch self {
             case .anc: return "wave.3.right"
             case .transparency: return "ear"
@@ -110,6 +118,8 @@ struct NoiseControlState: Equatable {
             case .unknown: return "questionmark"
             }
         }
+
+        var accessibilityLabel: String { rawValue }
     }
 
     var ancOn: Bool?
@@ -126,6 +136,9 @@ struct NoiseControlState: Equatable {
 
 enum EqPreset {
     static let bands = ["50 Hz", "250 Hz", "800 Hz", "3 kHz", "8 kHz"]
+    /// Center frequencies in Hz for graph layout and band control.
+    static let bandFrequencies: [Double] = [50, 250, 800, 3_000, 8_000]
+    static let bandLabels = ["50", "250", "800", "3k", "8k"]
     static let all: [(name: String, gains: [Float])] = [
         ("Flat", [0, 0, 0, 0, 0]),
         ("Rock", [0, 0, 3, 3, -1]),
