@@ -2,7 +2,7 @@
 
 Menu bar app for Sennheiser Accentum headphones on macOS.
 
-Control noise cancellation, transparency, volume, and battery from your menu bar. No Dock icon — it lives in the menu bar only.
+Control noise cancellation, transparency, volume, and battery from your menu bar.
 
 ---
 
